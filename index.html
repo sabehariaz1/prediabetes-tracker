@@ -118,32 +118,24 @@
      HEADER — sticky, tracks system state, carries the Research
      Mode tag rather than a stock logo lockup.
      ============================================================ -->
-<header class="sticky top-0 z-30 bg-clinic-panel/90 backdrop-blur border-b border-clinic-line shadow-crisp">
-  <div class="max-w-md mx-auto px-5 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-2.5">
-      <!-- Logo mark: simple pulse/shield glyph, no external asset -->
-      <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true">
-        <rect width="100" height="100" rx="22" fill="#0f172a"/>
-        <path d="M50 22c-15 0-27 12-27 27 0 19 27 33 27 33s27-14 27-33c0-15-12-27-27-27z" fill="none" stroke="#38bdf8" stroke-width="5"/>
-        <path d="M32 49h9l5-11 8 20 5-9h9" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <div class="leading-tight">
-        <p class="font-extrabold text-[15px] tracking-tight">Prediabetes Tracker</p>
-        <p class="text-[11px] text-clinic-sub -mt-0.5">&amp; Planner</p>
+  <!-- App Header -->
+  <header class="bg-sky-600 text-white shadow-md sticky top-0 z-50">
+    <div class="max-w-md mx-auto px-4 py-4 flex flex-col gap-2">
+      <div class="flex justify-between items-center">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+          🩺 Prediabetes Tracker
+        </h1>
+        <span class="text-[11px] bg-sky-700 px-2 py-0.5 rounded-full font-medium">Research Mode</span>
+      </div>
+      <!-- Academic Study Submission Portal Banner -->
+      <div class="bg-sky-700/50 rounded-lg p-2 flex justify-between items-center text-xs">
+        <span class="text-sky-100">📋 Academic Study Submission Portal:</span>
+        <a href="https://forms.gle/1uWGZihJUSykLeUH6" target="_blank" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-2.5 py-1 rounded transition text-center">
+          Submit Logs
+        </a>
       </div>
     </div>
-
-    <div class="flex items-center gap-2">
-      <span id="sync-indicator" class="inline-flex items-center gap-1.5 text-[11px] text-clinic-sub">
-        <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-        <span id="sync-label">Saved on device</span>
-      </span>
-      <span class="text-[10px] font-semibold text-sky-800 bg-clinic-accentSoft border border-sky-200 px-2 py-1 rounded-full">
-        Research Mode
-      </span>
-    </div>
-  </div>
-</header>
+  </header>
 
 <!-- ============================================================
      MAIN
