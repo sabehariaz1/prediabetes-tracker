@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Prediabetes Tracker &amp; Planner</title>
+<meta name="description" content="A self-hosted, private prediabetes risk screener and biometric tracker. Your data never leaves your device." />
+<meta name="theme-color" content="#0f172a" />
+
+<!-- ============================================================
+     PWA MANIFEST (inline, base64-free — served as a data URI so the
+     whole app still lives in one file if you skip manifest.json).
+     If you add a real manifest.json alongside index.html, swap this
+     line for: <link rel="manifest" href="./manifest.json" />
+     ============================================================ -->
+<link rel="manifest" href="data:application/manifest+json,{
+  %22name%22:%22Prediabetes%20Tracker%20%26%20Planner%22,
+  %22short_name%22:%22GlucoseTrack%22,
+  %22start_url%22:%22.%2Findex.html%22,
+  %22display%22:%22standalone%22,
+  %22background_color%22:%22%23f1f5f9%22,
+  %22theme_color%22:%22%230f172a%22
+}" />
+
+<!-- Apple/iOS home-screen support -->
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230f172a'/%3E%3Cpath d='M50 22c-15 0-27 12-27 27 0 19 27 33 27 33s27-14 27-33c0-15-12-27-27-27z' fill='none' stroke='%2338bdf8' stroke-width='5'/%3E%3Ccircle cx='50' cy='49' r='7' fill='%2338bdf8'/%3E%3C/svg%3E" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+<!-- ============================================================
+     TYPOGRAPHY — single family (Manrope), used deliberately across
+     weights/tracking rather than mixing display + body faces.
+     ============================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- ============================================================
+     TAILWIND CSS — latest CDN build
+     ============================================================ -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          mono: ['"Space Mono"', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          // Named clinical palette — slate for structure, sky for
+          // the single accent hue, amber/rose reserved for clinical
+          // flags only (never decorative).
+          clinic: {
+            bg: '#f1f5f9',      // slate-100 canvas
+            panel: '#ffffff',
+            ink: '#0f172a',     // slate-900
+            sub: '#475569',     // slate-600
+            line: '#e2e8f0',    // slate-200
+            accent: '#0284c7',  // sky-600
+            accentSoft: '#e0f2fe', // sky-100
+            accentDeep: '#0c4a6e', // sky-900
+          }
+        },
+        boxShadow: {
+          'crisp': '0 1px 2px 0 rgba(15, 23, 42, 0.06)',
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  /* Respect reduced-motion preference globally */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  html { -webkit-tap-highlight-color: transparent; }
+  body { background-color: #f1f5f9; }
+
+  /* Custom focus ring — visible, but tuned to the accent, not the
+     harsh default browser blue */
+  :focus-visible {
+    outline: 2px solid #0284c7;
+    outline-offset: 2px;
+  }
+
+  /* Numeric inputs: strip the spinner chrome so the compact BMI
+     panel reads as a calculator, not a stock form control */
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type=number] { -moz-appearance: textfield; }
+
+  /* Timeline connective rule */
+  .ledger-rule {
+    background-image: linear-gradient(to bottom, #cbd5e1 0 4px, transparent 4px 8px);
+    background-size: 1px 8px;
+    background-repeat: repeat-y;
+  }
+
+  /* Subtle one-time reveal on the risk verdict — the single
+     orchestrated motion moment in the app, not scattered hovers */
+  @keyframes reveal {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .reveal-once { animation: reveal 320ms ease-out; }
+</style>
+</head>
+
+<body class="bg-clinic-bg text-clinic-ink font-sans antialiased min-h-screen">
+
+<!-- ============================================================
+     HEADER — sticky, tracks system state, carries the Research
+     Mode tag rather than a stock logo lockup.
+     ============================================================ -->
+<header class="sticky top-0 z-30 bg-clinic-panel/90 backdrop-blur border-b border-clinic-line shadow-crisp">
+  <div class="max-w-md mx-auto px-5 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2.5">
+      <!-- Logo mark: simple pulse/shield glyph, no external asset -->
+      <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true">
+        <rect width="100" height="100" rx="22" fill="#0f172a"/>
+        <path d="M50 22c-15 0-27 12-27 27 0 19 27 33 27 33s27-14 27-33c0-15-12-27-27-27z" fill="none" stroke="#38bdf8" stroke-width="5"/>
+        <path d="M32 49h9l5-11 8 20 5-9h9" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="leading-tight">
+        <p class="font-extrabold text-[15px] tracking-tight">Prediabetes Tracker</p>
+        <p class="text-[11px] text-clinic-sub -mt-0.5">&amp; Planner</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <span id="sync-indicator" class="inline-flex items-center gap-1.5 text-[11px] text-clinic-sub">
+        <span id="sync-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+        <span id="sync-label">Saved on device</span>
+      </span>
+      <span class="text-[10px] font-semibold text-sky-800 bg-clinic-accentSoft border border-sky-200 px-2 py-1 rounded-full">
+        Research Mode
+      </span>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================
+     MAIN
+     ============================================================ -->
+<main class="max-w-md mx-auto px-5 pb-24 pt-5 space-y-6">
+
+  <!-- Disclaimer strip -->
+  <p class="text-[12px] leading-relaxed text-clinic-sub bg-white border border-clinic-line rounded-lg px-3.5 py-3">
+    This tool mirrors the CDC's public prediabetes screening logic for personal, informational tracking only. It is not a diagnosis. All entries are stored locally in your browser — nothing is transmitted anywhere.
+  </p>
+
+  <!-- ==========================================================
+       SECTION 1 — CDC RISK SCREENER
+       ========================================================== -->
+  <section aria-labelledby="risk-heading" class="bg-clinic-panel border border-clinic-line rounded-lg overflow-hidden">
+    <div class="border-l-4 border-clinic-accent px-5 py-4">
+      <h2 id="risk-heading" class="font-bold text-lg">Risk screener</h2>
+      <p class="text-[13px] text-clinic-sub mt-0.5">Based on the CDC's 1-minute prediabetes risk test</p>
+    </div>
+
+    <form id="risk-form" class="px-5 pb-5 space-y-5" novalidate>
+
+      <!-- Age -->
+      <div>
+        <label for="f-age" class="block text-sm font-semibold mb-1.5">Age</label>
+        <select id="f-age" name="age" required
+          class="w-full bg-white border border-clinic-line rounded-md px-3 py-2.5 text-sm focus:border-clinic-accent">
+          <option value="0">Younger than 40</option>
+          <option value="1">40 to 49</option>
+          <option value="2">50 to 59</option>
+          <option value="3">60 or older</option>
+        </select>
+      </div>
+
+      <!-- Biological sex -->
+      <div>
+        <span class="block text-sm font-semibold mb-1.5">Biological sex</span>
+        <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Biological sex">
+          <label class="sex-option flex items-center justify-center gap-2 border border-clinic-line rounded-md py-2.5 text-sm cursor-pointer has-[:checked]:border-clinic-accent has-[:checked]:bg-clinic-accentSoft has-[:checked]:text-sky-900 has-[:checked]:font-semibold transition-colors">
+            <input type="radio" name="sex" value="male" class="accent-sky-600" checked />
+            Male
+          </label>
+          <label class="sex-option flex items-center justify-center gap-2 border border-clinic-line rounded-md py-2.5 text-sm cursor-pointer has-[:checked]:border-clinic-accent has-[:checked]:bg-clinic-accentSoft has-[:checked]:text-sky-900 has-[:checked]:font-semibold transition-colors">
+            <input type="radio" name="sex" value="female" class="accent-sky-600" />
+            Female
+          </label>
+        </div>
+      </div>
+
+      <!-- Conditional: gestational diabetes — only visible if sex = female -->
+      <div id="gdm-wrapper" class="hidden">
+        <label for="f-gdm" class="block text-sm font-semibold mb-1.5">
+          Ever diagnosed with gestational diabetes?
+        </label>
+        <select id="f-gdm" name="gdm"
+          class="w-full bg-white border border-clinic-line rounded-md px-3 py-2.5 text-sm focus:border-clinic-accent">
+          <option value="0">No</option>
+          <option value="1">Yes</option>
+        </select>
+      </div>
+
+      <!-- Family history -->
+      <div>
+        <label for="f-family" class="block text-sm font-semibold mb-1.5">
+          Parent or sibling with diabetes?
+        </label>
+        <select id="f-family" name="family"
+          class="w-full bg-white border border-clinic-line rounded-md px-3 py-2.5 text-sm focus:border-clinic-accent">
+          <option value="0">No</option>
+          <option value="1">Yes</option>
+        </select>
+      </div>
+
+      <!-- High blood pressure -->
+      <div>
+        <label for="f-bp" class="block text-sm font-semibold mb-1.5">
+          Diagnosed with high blood pressure?
+        </label>
+        <select id="f-bp" name="bp"
+          class="w-full bg-white border border-clinic-line rounded-md px-3 py-2.5 text-sm focus:border-clinic-accent">
+          <option value="0">No</option>
+          <option value="1">Yes</option>
+        </select>
+      </div>
+
+      <!-- Physical activity -->
+      <div>
+        <label for="f-activity" class="block text-sm font-semibold mb-1.5">
+          Physically active most days?
+        </label>
+        <select id="f-activity" name="activity"
+          class="w-full bg-white border border-clinic-line rounded-md px-3 py-2.5 text-sm focus:border-clinic-accent">
+          <option value="0">Yes, regularly active</option>
+          <option value="1">No, mostly sedentary</option>
+        </select>
+      </div>
+
+      <!-- ==================================================
+           INTEGRATED BMI SUB-PANEL — feeds "bmi-category"
+           select below in real time
+           ================================================== -->
+      <div class="bg-slate-50 border border-clinic-line rounded-md p-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm font-semibold">Body mass index</span>
+          <div class="flex text-[11px] font-semibold border border-clinic-line rounded-full overflow-hidden">
+            <button type="button" id="unit-metric" class="px-2.5 py-1 bg-clinic-ink text-white">cm / kg</button>
+            <button type="button" id="unit-imperial" class="px-2.5 py-1 bg-white text-clinic-sub">ft-in / lb</button>
+          </div>
+        </div>
+
+        <!-- Metric inputs -->
+        <div id="bmi-metric-inputs" class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label for="bmi-height-cm" class="text-[11px] text-clinic-sub">Height (cm)</label>
+            <input type="number" inputmode="decimal" id="bmi-height-cm" placeholder="170"
+              class="w-full bg-white border border-clinic-line rounded-md px-3 py-2 text-sm mt-0.5 focus:border-clinic-accent" />
+          </div>
+          <div>
+            <label for="bmi-weight-kg" class="text-[11px] text-clinic-sub">Weight (kg)</label>
+            <input type="number" inputmode="decimal" id="bmi-weight-kg" placeholder="70"
+              class="w-full bg-white border border-clinic-line rounded-md px-3 py-2 text-sm mt-0.5 focus:border-clinic-accent" />
+          </div>
+        </div>
+
+        <!-- Imperial inputs (hidden by default) -->
+        <div id="bmi-imperial-inputs" class="hidden grid grid-cols-3 gap-2.5">
+          <div>
+            <label for="bmi-height-ft" class="text-[11px] text-clinic-sub">Height (ft)</label>
+            <input type="number" inputmode="numeric" id="bmi-height-ft" placeholder="5"
+              class="w-full bg-white border border-clinic-line rounded-md px-3 py-2 text-sm mt-0.5 focus:border-clinic-accent" />
+          </div>
+          <div>
+            <label for="bmi-height-in" class="text-[11px] text-clinic-sub">Height (in)</label>
+            <input type="number" inputmode="numeric" id="bmi-height-in" placeholder="7"
+              class="w-full bg-white border border-clinic-line rounded-md px-3 py-2 text-sm mt-0.5 focus:border-clinic-accent" />
+          </div>
+          <div>
+            <label for="bmi-weight-lb" class="text-[11px] text-clinic-sub">Weight (lb)</label>
+            <input type="number" inputmode="numeric" id="bmi-weight-lb" placeholder="154"
+              class="w-full bg-white border border-clinic-line rounded-md px-3 py-2 text-sm mt-0.5 focus:border-clinic-accent" />
+          </div>
+        </div>
+
+        <!-- Live BMI readout -->
+        <div class="flex items-baseline justify-between mt-3 pt-3 border-t border-dashed border-clinic-line">
+          <span class="text-[12px] text-clinic-sub">Calculated BMI</span>
+          <span class="font-mono">
+            <span id="bmi-value" class="text-xl font-bold">—</span>
+            <span id="bmi-category-label" class="text-[12px] text-clinic-sub ml-1">Enter height &amp; weight</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- BMI category — auto-synced from panel above, but left
+           editable in case a user already knows their category -->
+      <div>
+        <label for="f-bmi" class="block text-sm font-semibold mb-1.5">
+          BMI category
+          <span class="font-normal text-clinic-sub text-[12px]">(auto-filled from above)</span>
+        </label>
+        <select id="f-bmi" name="bmi"
+          class="w-full bg-white border border-clinic-line rounded-md px-3 py-2.5 text-sm focus:border-clinic-accent">
+          <option value="0">Below 25 — not overweight</option>
+          <option value="1">25 to 29 — overweight</option>
+          <option value="2">30 to 39 — obese</option>
+          <option value="3">40 or higher — severely obese</option>
+        </select>
+      </div>
+
+      <button type="submit"
+        class="w-full bg-clinic-ink hover:bg-slate-800 text-white font-semibold text-sm rounded-md py-3 transition-colors">
+        Calculate my risk score
+      </button>
+    </form>
+
+    <!-- Result panel -->
+    <div id="risk-result" class="hidden px-5 pb-5" aria-live="polite"></div>
+  </section>
+
+  <!-- ==========================================================
+       SECTION 2 — BIOMETRIC LOG JOURNAL
+       ========================================================== -->
+  <section aria-labelledby="log-heading" class="bg-clinic-panel border border-clinic-line rounded-lg overflow-hidden">
+    <div class="border-l-4 border-clinic-accent px-5 py-4">
+      <h2 id="log-heading" class="font-bold text-lg">Daily log</h2>
+      <p class="text-[13px] text-clinic-sub mt-0.5">Record fasting glucose and weight</p>
+    </div>
+
+    <form id="log-form" class="px-5 pb-5 space-y-4">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label for="log-glucose" class="block text-sm font-semibold mb-1.5">Fasting glucose</label>
+          <div class="relative">
+            <input type="number" inputmode="decimal" id="log-glucose" required min="20" max="600"
+              placeholder="95"
+              class="w-full bg-white border border-clinic-line rounded-md pl-3 pr-12 py-2.5 text-sm focus:border-clinic-accent" />
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-clinic-sub">mg/dL</span>
+          </div>
+        </div>
+        <div>
+          <label for="log-weight" class="block text-sm font-semibold mb-1.5">Weight</label>
+          <div class="relative">
+            <input type="number" inputmode="decimal" id="log-weight" required min="30" max="700"
+              placeholder="165"
+              class="w-full bg-white border border-clinic-line rounded-md pl-3 pr-9 py-2.5 text-sm focus:border-clinic-accent" />
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-clinic-sub">lb</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label for="log-date" class="block text-sm font-semibold mb-1.5">Date</label>
+        <input type="date" id="log-date" required
+          class="w-full bg-white border border-clinic-line rounded-md px-3 py-2.5 text-sm focus:border-clinic-accent" />
+      </div>
+
+      <button type="submit"
+        class="w-full bg-clinic-accent hover:bg-sky-700 text-white font-semibold text-sm rounded-md py-3 transition-colors">
+        Add entry
+      </button>
+      <p id="log-feedback" class="text-[12px] text-center text-clinic-sub hidden"></p>
+    </form>
+  </section>
+
+  <!-- ==========================================================
+       SECTION 3 — TIMELINE LEDGER
+       ========================================================== -->
+  <section aria-labelledby="ledger-heading" class="bg-clinic-panel border border-clinic-line rounded-lg overflow-hidden">
+    <div class="flex items-center justify-between border-l-4 border-clinic-accent px-5 py-4">
+      <div>
+        <h2 id="ledger-heading" class="font-bold text-lg">History</h2>
+        <p class="text-[13px] text-clinic-sub mt-0.5"><span id="entry-count">0</span> entries on this device</p>
+      </div>
+      <button id="clear-log-btn" type="button"
+        class="text-[12px] font-semibold text-rose-700 border border-rose-200 bg-rose-50 rounded-md px-3 py-1.5 hover:bg-rose-100 transition-colors">
+        Clear
+      </button>
+    </div>
+
+    <div id="ledger-empty" class="px-5 pb-6 text-sm text-clinic-sub">
+      No entries yet — add your first reading above.
+    </div>
+
+    <ol id="ledger-list" class="hidden px-5 pb-5 max-h-96 overflow-y-auto space-y-0"></ol>
+  </section>
+
+  <!-- ==========================================================
+       SECTION 4 — GUIDELINES CARD (dark)
+       ========================================================== -->
+  <section aria-labelledby="guide-heading" class="bg-clinic-ink text-slate-100 rounded-lg overflow-hidden">
+    <div class="px-5 pt-5">
+      <h2 id="guide-heading" class="font-bold text-lg text-white">Clinical guidelines</h2>
+      <p class="text-[13px] text-slate-400 mt-0.5">General CDC / ADA prevention-program targets</p>
+    </div>
+
+    <div class="px-5 py-5 space-y-4">
+      <div class="flex gap-3">
+        <div class="w-9 h-9 shrink-0 rounded-md bg-sky-500/15 border border-sky-500/30 flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+        </div>
+        <div>
+          <p class="font-semibold text-sm text-white">Aerobic activity</p>
+          <p class="text-[13px] text-slate-300 leading-relaxed mt-0.5">At least 150 minutes per week of moderate-intensity activity (e.g. brisk walking), spread across 3 or more days, with no more than 2 consecutive days off.</p>
+        </div>
+      </div>
+
+      <div class="h-px bg-slate-700"></div>
+
+      <div class="flex gap-3">
+        <div class="w-9 h-9 shrink-0 rounded-md bg-sky-500/15 border border-sky-500/30 flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        </div>
+        <div>
+          <p class="font-semibold text-sm text-white">Carbohydrate tracking</p>
+          <p class="text-[13px] text-slate-300 leading-relaxed mt-0.5">Favor consistent, moderate carbohydrate intake per meal, prioritizing fiber-rich whole grains, legumes, and non-starchy vegetables over refined sugars.</p>
+        </div>
+      </div>
+
+      <div class="h-px bg-slate-700"></div>
+
+      <div class="flex gap-3">
+        <div class="w-9 h-9 shrink-0 rounded-md bg-sky-500/15 border border-sky-500/30 flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round"><path d="M12 3v3m0 12v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M3 12h3m12 0h3M4.2 19.8l2.1-2.1m11.4-11.4 2.1-2.1"/></svg>
+        </div>
+        <div>
+          <p class="font-semibold text-sm text-white">Weight target</p>
+          <p class="text-[13px] text-slate-300 leading-relaxed mt-0.5">A 5–7% reduction in body weight is the standard prevention-program goal shown to lower progression risk toward type 2 diabetes.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-[11px] text-slate-500 px-5 pb-5">Source: CDC National Diabetes Prevention Program. Consult a clinician before changing diet or exercise routines.</p>
+  </section>
+
+</main>
+
+<footer class="max-w-md mx-auto px-5 pb-10 text-center">
+  <p class="text-[11px] text-clinic-sub">Prediabetes Tracker &amp; Planner — runs entirely in your browser. No accounts, no servers, no tracking.</p>
+</footer>
+
+<!-- ================================================================
+     APPLICATION LOGIC — strictly modular vanilla JS, no frameworks.
+     Organized as small, self-contained modules attached via IIFEs so
+     nothing leaks into the global scope except the single App entry.
+     JSDoc types are used throughout in lieu of TypeScript tooling.
+     ================================================================ -->
+<script>
+"use strict";
+
+/**
+ * @typedef {Object} LogEntry
+ * @property {string} id
+ * @property {string} date - ISO date string (yyyy-mm-dd)
+ * @property {number} glucose - mg/dL
+ * @property {number} weightLb - pounds
+ * @property {number} createdAt - epoch ms, used for stable ordering
+ */
+
+/**
+ * @typedef {Object} RiskResult
+ * @property {number} score
+ * @property {"lower"|"higher"} tier
+ */
+
+/* ----------------------------------------------------------------
+   MODULE: Storage
+   Wraps all localStorage reads/writes behind a small typed API so
+   the rest of the app never touches localStorage directly.
+   ---------------------------------------------------------------- */
+const Storage = (() => {
+  const LOG_KEY = "pdt_entries_v1";
+  const RISK_KEY = "pdt_last_risk_v1";
+
+  /** @returns {LogEntry[]} */
+  function getEntries() {
+    try {
+      const raw = window.localStorage.getItem(LOG_KEY);
+      return raw ? /** @type {LogEntry[]} */ (JSON.parse(raw)) : [];
+    } catch (err) {
+      console.error("Storage.getEntries: corrupt data, resetting.", err);
+      return [];
+    }
+  }
+
+  /** @param {LogEntry[]} entries */
+  function saveEntries(entries) {
+    window.localStorage.setItem(LOG_KEY, JSON.stringify(entries));
+  }
+
+  /** @param {LogEntry} entry */
+  function appendEntry(entry) {
+    const entries = getEntries();
+    entries.push(entry);
+    saveEntries(entries);
+    return entries;
+  }
+
+  function clearEntries() {
+    window.localStorage.removeItem(LOG_KEY);
+  }
+
+  /** @param {RiskResult} result */
+  function saveRiskResult(result) {
+    window.localStorage.setItem(RISK_KEY, JSON.stringify(result));
+  }
+
+  /** @returns {RiskResult|null} */
+  function getRiskResult() {
+    try {
+      const raw = window.localStorage.getItem(RISK_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return { getEntries, saveEntries, appendEntry, clearEntries, saveRiskResult, getRiskResult };
+})();
+
+/* ----------------------------------------------------------------
+   MODULE: BMI
+   Pure calculation functions — no DOM access — matching standard
+   CDC/WHO adult BMI thresholds.
+   ---------------------------------------------------------------- */
+const BMI = (() => {
+  /**
+   * @param {number} weightKg
+   * @param {number} heightCm
+   * @returns {number} BMI value
+   */
+  function fromMetric(weightKg, heightCm) {
+    const heightM = heightCm / 100;
+    return weightKg / (heightM * heightM);
+  }
+
+  /**
+   * @param {number} weightLb
+   * @param {number} heightIn
+   * @returns {number} BMI value
+   */
+  function fromImperial(weightLb, heightIn) {
+    return (weightLb / (heightIn * heightIn)) * 703;
+  }
+
+  /**
+   * Maps a raw BMI value to the CDC clinical category, and to the
+   * matching index used by the risk form's BMI <select>.
+   * @param {number} bmi
+   * @returns {{ label: string, formIndex: 0|1|2|3 }}
+   */
+  function classify(bmi) {
+    if (bmi < 18.5) return { label: "Underweight", formIndex: 0 };
+    if (bmi < 25) return { label: "Normal weight", formIndex: 0 };
+    if (bmi < 30) return { label: "Overweight", formIndex: 1 };
+    if (bmi < 40) return { label: "Obese", formIndex: 2 };
+    return { label: "Severely obese", formIndex: 3 };
+  }
+
+  return { fromMetric, fromImperial, classify };
+})();
+
+/* ----------------------------------------------------------------
+   MODULE: RiskEngine
+   Implements the official CDC prediabetes risk test point scale.
+   Score >= 5 indicates higher likelihood of prediabetes.
+   ---------------------------------------------------------------- */
+const RiskEngine = (() => {
+  const HIGH_RISK_THRESHOLD = 5;
+
+  /**
+   * @param {{ age:number, sex:number, gdm:number, family:number, bp:number, activity:number, bmi:number }} inputs
+   * @returns {RiskResult}
+   */
+  function calculate(inputs) {
+    const score =
+      inputs.age +
+      inputs.sex +
+      inputs.gdm +
+      inputs.family +
+      inputs.bp +
+      inputs.activity +
+      inputs.bmi;
+
+    return {
+      score,
+      tier: score >= HIGH_RISK_THRESHOLD ? "higher" : "lower",
+    };
+  }
+
+  return { calculate, HIGH_RISK_THRESHOLD };
+})();
+
+/* ----------------------------------------------------------------
+   MODULE: Formatting helpers
+   ---------------------------------------------------------------- */
+const Format = (() => {
+  /** @param {string} isoDate */
+  function humanDate(isoDate) {
+    const d = new Date(isoDate + "T00:00:00");
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  /** @returns {string} today as yyyy-mm-dd, in local time */
+  function todayIso() {
+    const d = new Date();
+    const offset = d.getTimezoneOffset();
+    const local = new Date(d.getTime() - offset * 60000);
+    return local.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Clinical flag color for a fasting glucose reading.
+   * <100 normal · 100–125 prediabetes range · >=126 diabetes range
+   * @param {number} glucose
+   */
+  function glucoseFlag(glucose) {
+    if (glucose >= 126) return { label: "High", classes: "bg-rose-50 text-rose-700 border-rose-200" };
+    if (glucose >= 100) return { label: "Elevated", classes: "bg-amber-50 text-amber-700 border-amber-200" };
+    return { label: "Normal", classes: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+  }
+
+  return { humanDate, todayIso, glucoseFlag };
+})();
+
+/* ----------------------------------------------------------------
+   MODULE: UI — binds all DOM behavior. Kept last so every module
+   above is defined and pure/testable independent of the DOM.
+   ---------------------------------------------------------------- */
+const UI = (() => {
+  /** @type {Record<string, HTMLElement>} */
+  let el = {};
+
+  function cacheDom() {
+    el = {
+      riskForm: document.getElementById("risk-form"),
+      riskResult: document.getElementById("risk-result"),
+      sexRadios: document.querySelectorAll('input[name="sex"]'),
+      gdmWrapper: document.getElementById("gdm-wrapper"),
+      fBmi: document.getElementById("f-bmi"),
+
+      unitMetricBtn: document.getElementById("unit-metric"),
+      unitImperialBtn: document.getElementById("unit-imperial"),
+      bmiMetricInputs: document.getElementById("bmi-metric-inputs"),
+      bmiImperialInputs: document.getElementById("bmi-imperial-inputs"),
+      heightCm: document.getElementById("bmi-height-cm"),
+      weightKg: document.getElementById("bmi-weight-kg"),
+      heightFt: document.getElementById("bmi-height-ft"),
+      heightIn: document.getElementById("bmi-height-in"),
+      weightLb: document.getElementById("bmi-weight-lb"),
+      bmiValue: document.getElementById("bmi-value"),
+      bmiCategoryLabel: document.getElementById("bmi-category-label"),
+
+      logForm: document.getElementById("log-form"),
+      logGlucose: document.getElementById("log-glucose"),
+      logWeight: document.getElementById("log-weight"),
+      logDate: document.getElementById("log-date"),
+      logFeedback: document.getElementById("log-feedback"),
+
+      entryCount: document.getElementById("entry-count"),
+      ledgerEmpty: document.getElementById("ledger-empty"),
+      ledgerList: document.getElementById("ledger-list"),
+      clearLogBtn: document.getElementById("clear-log-btn"),
+
+      syncDot: document.getElementById("sync-dot"),
+      syncLabel: document.getElementById("sync-label"),
+    };
+  }
+
+  /* ---------- Conditional visibility: gestational diabetes ---------- */
+  function bindSexToggle() {
+    el.sexRadios.forEach((radio) => {
+      radio.addEventListener("change", (e) => {
+        const isFemale = /** @type {HTMLInputElement} */ (e.target).value === "female";
+        el.gdmWrapper.classList.toggle("hidden", !isFemale);
+        if (!isFemale) {
+          const gdmSelect = document.getElementById("f-gdm");
+          if (gdmSelect) gdmSelect.value = "0";
+        }
+      });
+    });
+  }
+
+  /* ---------- BMI unit toggle ---------- */
+  function bindUnitToggle() {
+    function setMetric() {
+      el.bmiMetricInputs.classList.remove("hidden");
+      el.bmiImperialInputs.classList.add("hidden");
+      el.unitMetricBtn.classList.add("bg-clinic-ink", "text-white");
+      el.unitMetricBtn.classList.remove("bg-white", "text-clinic-sub");
+      el.unitImperialBtn.classList.remove("bg-clinic-ink", "text-white");
+      el.unitImperialBtn.classList.add("bg-white", "text-clinic-sub");
+      recomputeBmi();
+    }
+    function setImperial() {
+      el.bmiImperialInputs.classList.remove("hidden");
+      el.bmiMetricInputs.classList.add("hidden");
+      el.unitImperialBtn.classList.add("bg-clinic-ink", "text-white");
+      el.unitImperialBtn.classList.remove("bg-white", "text-clinic-sub");
+      el.unitMetricBtn.classList.remove("bg-clinic-ink", "text-white");
+      el.unitMetricBtn.classList.add("bg-white", "text-clinic-sub");
+      recomputeBmi();
+    }
+    el.unitMetricBtn.addEventListener("click", setMetric);
+    el.unitImperialBtn.addEventListener("click", setImperial);
+  }
+
+  /* ---------- Live BMI calculation + sync into risk form ---------- */
+  function recomputeBmi() {
+    const usingMetric = !el.bmiMetricInputs.classList.contains("hidden");
+    let bmi = NaN;
+
+    if (usingMetric) {
+      const w = parseFloat(el.weightKg.value);
+      const h = parseFloat(el.heightCm.value);
+      if (w > 0 && h > 0) bmi = BMI.fromMetric(w, h);
+    } else {
+      const w = parseFloat(el.weightLb.value);
+      const ft = parseFloat(el.heightFt.value) || 0;
+      const inch = parseFloat(el.heightIn.value) || 0;
+      const totalIn = ft * 12 + inch;
+      if (w > 0 && totalIn > 0) bmi = BMI.fromImperial(w, totalIn);
+    }
+
+    if (!isFinite(bmi) || bmi <= 0) {
+      el.bmiValue.textContent = "—";
+      el.bmiCategoryLabel.textContent = "Enter height & weight";
+      return;
+    }
+
+    const rounded = Math.round(bmi * 10) / 10;
+    const { label, formIndex } = BMI.classify(rounded);
+    el.bmiValue.textContent = rounded.toFixed(1);
+    el.bmiCategoryLabel.textContent = label;
+
+    // Sync directly into the master risk form's BMI dropdown
+    el.fBmi.value = String(formIndex);
+  }
+
+  function bindBmiInputs() {
+    [el.heightCm, el.weightKg, el.heightFt, el.heightIn, el.weightLb].forEach((input) => {
+      input.addEventListener("input", recomputeBmi);
+    });
+  }
+
+  /* ---------- Risk form submission ---------- */
+  function bindRiskForm() {
+    el.riskForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const data = new FormData(el.riskForm);
+      const inputs = {
+        age: parseInt(String(data.get("age")), 10),
+        sex: data.get("sex") === "male" ? 1 : 0,
+        gdm: data.get("sex") === "female" ? parseInt(String(data.get("gdm") || "0"), 10) : 0,
+        family: parseInt(String(data.get("family")), 10),
+        bp: parseInt(String(data.get("bp")), 10),
+        activity: parseInt(String(data.get("activity")), 10),
+        bmi: parseInt(String(data.get("bmi")), 10),
+      };
+
+      const result = RiskEngine.calculate(inputs);
+      Storage.saveRiskResult(result);
+      renderRiskResult(result);
+    });
+  }
+
+  /** @param {RiskResult} result */
+  function renderRiskResult(result) {
+    const isHigher = result.tier === "higher";
+    const wrapClasses = isHigher
+      ? "border-amber-200 bg-amber-50"
+      : "border-emerald-200 bg-emerald-50";
+    const dotClasses = isHigher ? "bg-amber-500" : "bg-emerald-500";
+    const headline = isHigher
+      ? "Your score suggests a higher likelihood of prediabetes"
+      : "Your score suggests a lower likelihood of prediabetes";
+    const sub = isHigher
+      ? "Consider discussing these results with a clinician and reviewing the guidelines below."
+      : "Keep tracking your fasting glucose and weight to watch for changes over time.";
+
+    el.riskResult.innerHTML = `
+      <div class="reveal-once border ${wrapClasses} rounded-md p-4 flex gap-3">
+        <span class="w-2.5 h-2.5 rounded-full ${dotClasses} mt-1.5 shrink-0"></span>
+        <div>
+          <p class="font-bold text-sm font-mono">Score: ${result.score} / 10</p>
+          <p class="font-semibold text-sm mt-1">${headline}</p>
+          <p class="text-[13px] text-clinic-sub mt-1 leading-relaxed">${sub}</p>
+        </div>
+      </div>
+    `;
+    el.riskResult.classList.remove("hidden");
+  }
+
+  /* ---------- Biometric log form submission ---------- */
+  function bindLogForm() {
+    el.logDate.value = Format.todayIso();
+
+    el.logForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+
+      const glucose = parseFloat(el.logGlucose.value);
+      const weightLb = parseFloat(el.logWeight.value);
+      const date = el.logDate.value;
+
+      if (!glucose || !weightLb || !date) return;
+
+      /** @type {LogEntry} */
+      const entry = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        date,
+        glucose,
+        weightLb,
+        createdAt: Date.now(),
+      };
+
+      Storage.appendEntry(entry);
+      renderLedger();
+      flashSaved();
+
+      el.logForm.reset();
+      el.logDate.value = Format.todayIso();
+    });
+  }
+
+  function flashSaved() {
+    el.logFeedback.textContent = "Entry saved to this device.";
+    el.logFeedback.classList.remove("hidden");
+    window.setTimeout(() => el.logFeedback.classList.add("hidden"), 2200);
+
+    // Briefly pulse the header sync indicator so state changes are visible
+    el.syncLabel.textContent = "Just saved";
+    window.setTimeout(() => (el.syncLabel.textContent = "Saved on device"), 1800);
+  }
+
+  /* ---------- Ledger rendering ---------- */
+  function renderLedger() {
+    const entries = Storage.getEntries().slice().sort((a, b) => {
+      // newest first; fall back to createdAt for same-day entries
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return b.createdAt - a.createdAt;
+    });
+
+    el.entryCount.textContent = String(entries.length);
+
+    if (entries.length === 0) {
+      el.ledgerEmpty.classList.remove("hidden");
+      el.ledgerList.classList.add("hidden");
+      el.ledgerList.innerHTML = "";
+      return;
+    }
+
+    el.ledgerEmpty.classList.add("hidden");
+    el.ledgerList.classList.remove("hidden");
+
+    el.ledgerList.innerHTML = entries
+      .map((entry, index) => {
+        const flag = Format.glucoseFlag(entry.glucose);
+        const isLast = index === entries.length - 1;
+        return `
+          <li class="relative pl-9 pb-5 ${isLast ? "" : "ledger-rule"}">
+            <span class="absolute left-0 top-0.5 w-6 h-6 rounded-full bg-clinic-ink text-white text-[10px] font-bold flex items-center justify-center font-mono">
+              ${entries.length - index}
+            </span>
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-semibold">${Format.humanDate(entry.date)}</p>
+              <span class="text-[10px] font-semibold border rounded-full px-2 py-0.5 ${flag.classes}">${flag.label}</span>
+            </div>
+            <div class="flex gap-4 mt-1 text-[13px] text-clinic-sub font-mono">
+              <span>${entry.glucose} mg/dL</span>
+              <span>${entry.weightLb} lb</span>
+            </div>
+          </li>
+        `;
+      })
+      .join("");
+  }
+
+  /* ---------- Clear all records ---------- */
+  function bindClearLog() {
+    el.clearLogBtn.addEventListener("click", () => {
+      if (Storage.getEntries().length === 0) return;
+      const confirmed = window.confirm(
+        "Delete every saved entry on this device? This can't be undone."
+      );
+      if (!confirmed) return;
+      Storage.clearEntries();
+      renderLedger();
+    });
+  }
+
+  function init() {
+    cacheDom();
+    bindSexToggle();
+    bindUnitToggle();
+    bindBmiInputs();
+    bindRiskForm();
+    bindLogForm();
+    bindClearLog();
+    renderLedger();
+
+    // Restore last risk result, if any, so a returning user sees it
+    const lastResult = Storage.getRiskResult();
+    if (lastResult) renderRiskResult(lastResult);
+  }
+
+  return { init };
+})();
+
+document.addEventListener("DOMContentLoaded", UI.init);
+</script>
+
+<!-- ================================================================
+     PWA SERVICE WORKER REGISTRATION
+     Requires a companion "sw.js" file in the same directory as this
+     index.html for offline caching to actually take effect. Push
+     both files to your GitHub Pages repo root.
+     ================================================================ -->
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker
+        .register("./sw.js")
+        .then((registration) => {
+          console.log("Service worker registered with scope:", registration.scope);
+        })
+        .catch((error) => {
+          console.error("Service worker registration failed:", error);
+        });
+    });
+  }
+</script>
+
+</body>
+</html>
