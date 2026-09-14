@@ -7,8 +7,142 @@
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#0ea5e9">
   <!-- Tailwind CSS CDN -->
-  <script src="https://jsdelivr.net"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+<script src="./config.js"></script>
 </head>
+  <script>
+// Function to save data to GitHub
+async function saveToGitHub(newData) {
+  try {
+    console.log('📤 Saving to GitHub...');
+    
+    // Step 1: Get current file from GitHub
+    const getUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
+    const getResponse = await fetch(getUrl, {
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+
+    if (!getResponse.ok) {
+      throw new Error(`Failed to fetch file: ${getResponse.statusText}`);
+    }
+
+    const fileData = await getResponse.json();
+    const currentSHA = fileData.sha;
+
+    // Step 2: Read current content
+    const currentContent = JSON.parse(
+      atob(fileData.content)
+    );
+
+    // Step 3: Add new data
+    currentContent.participants.push(newData);
+
+    // Step 4: Upload back to GitHub
+    const putUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
+    const putResponse = await fetch(putUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: `Add risk assessment - Participant ${currentContent.participants.length}`,
+        content: btoa(JSON.stringify(currentContent, null, 2)),
+        sha: currentSHA
+      })
+    });
+
+    if (!putResponse.ok) {
+      throw new Error(`Failed to save: ${putResponse.statusText}`);
+    }
+
+    console.log('✅ Data saved to GitHub successfully!');
+    alert('✅ Your assessment has been saved!');
+    return true;
+
+  } catch (error) {
+    console.error('❌ Error:', error);
+    alert('❌ Error saving data: ' + error.message);
+    return false;
+  }
+}
+
+// Update the submit button in your header
+document.addEventListener('DOMContentLoaded', function() {
+  const submitBtn = document.getElementById('autoSubmitBtn');
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.classList.remove('bg-slate-400', 'cursor-not-allowed', 'opacity-60');
+    submitBtn.classList.add('bg-sky-500', 'hover:bg-sky-600', 'cursor-pointer');
+    submitBtn.textContent = '✅ Submit to Research Database';
+    
+    submitBtn.onclick = function(e) {
+      e.preventDefault();
+      submitAssessment();
+    };
+  }
+});
+
+// Main submit function
+function submitAssessment() {
+  // Get CDC risk score
+  const age = parseInt(document.getElementById('cdcAge').value);
+  const sex = parseInt(document.getElementById('cdcSex').value);
+  const gestational = parseInt(document.getElementById('cdcGestational').value);
+  const family = parseInt(document.getElementById('cdcFamily').value);
+  const hbp = parseInt(document.getElementById('cdcHbp').value);
+  const active = parseInt(document.getElementById('cdcActive').value);
+  const weight = parseInt(document.getElementById('cdcWeightStatus').value);
+
+  const total = age + sex + gestational + family + hbp + active + weight;
+
+  // Determine risk level
+  let riskLevel = 'low';
+  if (total >= 5) riskLevel = 'moderate';
+  if (total >= 9) riskLevel = 'high';
+
+  // Get biometrics
+  const glucose = document.getElementById('glucose').value;
+  const weightLbs = document.getElementById('weight').value;
+
+  if (!glucose || !weightLbs) {
+    alert('❌ Please fill in all biometric data before submitting');
+    return;
+  }
+
+  // Create data object
+  const newParticipant = {
+    userId: `user_${Date.now()}`,
+    name: `Participant ${Date.now()}`,
+    riskAssessments: [{
+      timestamp: new Date().toISOString(),
+      cdcRiskScore: total,
+      riskLevel: riskLevel,
+      cdcFactors: {
+        "Age (0-3 points)": age,
+        "Biological Sex (0-1 point)": sex,
+        "Gestational Diabetes (0-1 point)": gestational,
+        "Family History (0-1 point)": family,
+        "High Blood Pressure (0-1 point)": hbp,
+        "Physical Activity (0-1 point)": active,
+        "Weight Profile (0-3 points)": weight
+      }
+    }],
+    dailyBiometricLog: [{
+      timestamp: new Date().toISOString(),
+      "Fasting Glucose (mg/dL)": parseInt(glucose),
+      "Weight (lbs)": parseInt(weightLbs)
+    }]
+  };
+
+  // Save to GitHub
+  saveToGitHub(newParticipant);
+}
+</script>
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen pb-12">
 
   <!-- App Header -->
