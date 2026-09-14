@@ -1,5 +1,33 @@
 {
   "studyName": "Prediabetes Risk Calculator Research",
   "version": "1.0",
-  "participants": []
+  "participants": [
+    {
+      "userId": "user_001",
+      "name": "Sample User",
+      "riskAssessments": [
+        {
+          "timestamp": "2026-09-14T10:30:00Z",
+          "cdcRiskScore": 7,
+          "riskLevel": "moderate",
+          "cdcFactors": {
+            "Age (0-3 points)": 2,
+            "Biological Sex (0-1 point)": 1,
+            "Gestational Diabetes (0-1 point)": 0,
+            "Family History (0-1 point)": 1,
+            "High Blood Pressure (0-1 point)": 1,
+            "Physical Activity (0-1 point)": 1,
+            "Weight Profile (0-3 points)": 2
+          }
+        }
+      ],
+      "dailyBiometricLog": [
+        {
+          "timestamp": "2026-09-14T08:00:00Z",
+          "Fasting Glucose (mg/dL)": 115,
+          "Weight (lbs)": 185
+        }
+      ]
+    }
+  ]
 }
